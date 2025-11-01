@@ -12,6 +12,8 @@ from PIL import Image
 import io
 import uvicorn
 from pathlib import Path
+import os
+import torch
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -90,6 +92,15 @@ HERBAL_LABELS = [
 async def load_model():
     """Load the pre-trained model on startup"""
     global classifier
+    # Reduce thread counts to fit low-memory environments (e.g., Render 512Mi)
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")
+    try:
+        torch.set_num_threads(1)
+    except Exception:
+        pass
+
     print("🔄 Loading zero-shot image classification model...")
     print("⏳ This may take a couple of minutes on first run (downloading model)...")
     classifier = pipeline("zero-shot-image-classification", model="openai/clip-vit-base-patch32")
