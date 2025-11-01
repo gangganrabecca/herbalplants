@@ -3,7 +3,7 @@ services:
     name: image-classification-api
     runtime: python
     plan: starter
-    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    buildCommand: pip install --upgrade pip && pip install -r requirements-render.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
@@ -24,5 +24,9 @@ services:
         value: 1
       - key: TOKENIZERS_PARALLELISM
         value: "false"
+      - key: USE_HF_API
+        value: "true"
+      - key: HF_MODEL_ID
+        value: openai/clip-vit-base-patch32
     healthCheckPath: /health
     autoDeploy: true

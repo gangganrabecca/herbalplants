@@ -7,13 +7,22 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from transformers import pipeline
+from huggingface_hub import InferenceClient
 from PIL import Image
 import io
 import uvicorn
 from pathlib import Path
 import os
-import torch
+
+# Determine whether to use Hugging Face Inference API before importing heavy libs
+USE_HF_API = os.getenv("USE_HF_API", "").lower() == "true"
+HF_API_TOKEN = os.getenv("HF_API_TOKEN", "")
+HF_MODEL_ID = os.getenv("HF_MODEL_ID", "openai/clip-vit-base-patch32")
+
+if not USE_HF_API:
+    # Import heavy deps only when doing local inference
+    from transformers import pipeline
+    import torch
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -33,6 +42,7 @@ app.add_middleware(
 
 # Global variable for the model
 classifier = None
+inference_client = None
 
 # Fixed list of Philippine herbal plants (50 labels)
 HERBAL_LABELS = [
@@ -92,20 +102,31 @@ HERBAL_LABELS = [
 async def load_model():
     """Load the pre-trained model on startup"""
     global classifier
-    # Reduce thread counts to fit low-memory environments (e.g., Render 512Mi)
-    os.environ.setdefault("OMP_NUM_THREADS", "1")
-    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
-    os.environ.setdefault("MKL_NUM_THREADS", "1")
-    try:
-        torch.set_num_threads(1)
-    except Exception:
-        pass
+    # For local inference, reduce threads to fit low-memory environments (e.g., Render 512Mi)
+    if not USE_HF_API:
+        os.environ.setdefault("OMP_NUM_THREADS", "1")
+        os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+        os.environ.setdefault("MKL_NUM_THREADS", "1")
+        try:
+            import torch as _torch
+            _torch.set_num_threads(1)
+        except Exception:
+            pass
 
-    print("🔄 Loading zero-shot image classification model...")
-    print("⏳ This may take a couple of minutes on first run (downloading model)...")
-    classifier = pipeline("zero-shot-image-classification", model="openai/clip-vit-base-patch32")
-    print("✅ Model loaded successfully!")
-    print("🚀 API is ready to classify images!")
+    if USE_HF_API:
+        # Use Hugging Face Inference API (no local model load)
+        global inference_client
+        print("🔄 Using Hugging Face Inference API for zero-shot image classification...")
+        if not HF_API_TOKEN:
+            print("⚠️  HF_API_TOKEN not set; requests will fail until token is provided.")
+        inference_client = InferenceClient(token=HF_API_TOKEN)
+        print("✅ Inference client initialized.")
+    else:
+        print("🔄 Loading zero-shot image classification model...")
+        print("⏳ This may take a couple of minutes on first run (downloading model)...")
+        classifier = pipeline("zero-shot-image-classification", model=HF_MODEL_ID)
+        print("✅ Model loaded successfully!")
+        print("🚀 API is ready to classify images!")
 
 
 @app.get("/")
@@ -119,7 +140,7 @@ async def root():
         # Fallback to API info if HTML not found
         return {
             "message": "Image Classification API",
-            "model": "openai/clip-vit-base-patch32 (zero-shot)",
+            "model": f"{HF_MODEL_ID} (zero-shot)" if not USE_HF_API else f"{HF_MODEL_ID} via HF Inference API",
             "status": "running",
             "endpoints": {
                 "/classify": "POST - Upload an image to classify",
@@ -134,7 +155,7 @@ async def api_info():
     """API information endpoint"""
     return {
         "message": "Image Classification API",
-        "model": "openai/clip-vit-base-patch32 (zero-shot)",
+        "model": f"{HF_MODEL_ID} (zero-shot)" if not USE_HF_API else f"{HF_MODEL_ID} via HF Inference API",
         "status": "running",
         "endpoints": {
             "/classify": "POST - Upload an image to classify",
@@ -175,9 +196,11 @@ async def classify_image(file: UploadFile = File(...)):
         JSON with top predictions and confidence scores
     """
     
-    # Check if model is loaded
-    if classifier is None:
+    # Check if model/API is available
+    if not USE_HF_API and classifier is None:
         raise HTTPException(status_code=503, detail="Model not loaded yet. Please wait...")
+    if USE_HF_API and inference_client is None:
+        raise HTTPException(status_code=503, detail="Inference API not initialized. Set USE_HF_API=true and HF_API_TOKEN.")
     
     # Validate file type
     if not file.content_type.startswith("image/"):
@@ -192,10 +215,17 @@ async def classify_image(file: UploadFile = File(...)):
         if image.mode != "RGB":
             image = image.convert("RGB")
         
-        # Classify the image using zero-shot with fixed herbal labels
-        predictions = classifier(image, candidate_labels=HERBAL_LABELS, multi_label=False)
-        # Keep only top 5 predictions
-        predictions = predictions[:5]
+        # Classify using either local model or HF Inference API
+        if USE_HF_API:
+            # Use HF Inference API (returns list of {label, score})
+            results = inference_client.zero_shot_image_classification(
+                image=image,
+                labels=HERBAL_LABELS,
+                model=HF_MODEL_ID,
+            )
+            predictions = sorted(results, key=lambda x: x.get("score", 0), reverse=True)[:5]
+        else:
+            predictions = classifier(image, candidate_labels=HERBAL_LABELS, multi_label=False)[:5]
         
         # Format response
         return {
@@ -262,7 +292,7 @@ if __name__ == "__main__":
     print("=" * 60)
     print("🤖 Image Classification API")
     print("=" * 60)
-    print("📦 Model: openai/clip-vit-base-patch32 (zero-shot)")
+    print(f"📦 Model: {HF_MODEL_ID} {'via HF Inference API' if USE_HF_API else '(zero-shot)'}")
     print("🌐 Custom UI: http://localhost:8000")
     print("📚 API Docs: http://localhost:8000/docs")
     print("🔧 API Info: http://localhost:8000/api")
