@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Philippine Herbal Plants Classifier</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .header .emoji {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 16px;
+        }
+
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 60px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f8f9ff;
+            margin-bottom: 30px;
+        }
+
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #f0f2ff;
+            transform: translateY(-2px);
+        }
+
+        .upload-area.dragover {
+            border-color: #764ba2;
+            background: #e8ebff;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+
+        .upload-text {
+            font-size: 18px;
+            color: #667eea;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .upload-subtext {
+            font-size: 14px;
+            color: #999;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .preview-container {
+            display: none;
+            margin-bottom: 30px;
+        }
+
+        .preview-container.active {
+            display: block;
+        }
+
+        .image-preview {
+            width: 100%;
+            max-height: 400px;
+            object-fit: contain;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .results {
+            display: none;
+        }
+
+        .results.active {
+            display: block;
+        }
+
+        .results-header {
+            font-size: 20px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .prediction-item {
+            margin-bottom: 15px;
+            animation: slideIn 0.3s ease forwards;
+            opacity: 0;
+        }
+
+        @keyframes slideIn {
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .prediction-item:nth-child(1) { animation-delay: 0.1s; }
+        .prediction-item:nth-child(2) { animation-delay: 0.2s; }
+        .prediction-item:nth-child(3) { animation-delay: 0.3s; }
+        .prediction-item:nth-child(4) { animation-delay: 0.4s; }
+        .prediction-item:nth-child(5) { animation-delay: 0.5s; }
+
+        .prediction-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 15px;
+        }
+
+        .label-text {
+            font-weight: 500;
+            color: #333;
+            text-transform: capitalize;
+        }
+
+        .label-confidence {
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .confidence-bar {
+            height: 10px;
+            background: #e0e0e0;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            border-radius: 5px;
+            transition: width 0.6s ease;
+            width: 0;
+        }
+
+        .top-prediction {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .top-prediction .medal {
+            font-size: 36px;
+            margin-bottom: 10px;
+        }
+
+        .top-prediction .label {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 5px;
+            text-transform: capitalize;
+        }
+
+        .top-prediction .confidence {
+            font-size: 18px;
+            opacity: 0.9;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            color: #667eea;
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        .error {
+            display: none;
+            background: #fee;
+            border: 2px solid #fcc;
+            color: #c33;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .error.active {
+            display: block;
+        }
+
+        .btn-reset {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 20px;
+        }
+
+        .btn-reset:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            color: #999;
+            font-size: 14px;
+        }
+
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="emoji">🤖</div>
+            <h1>Philippine Herbal Plants Classifier</h1>
+            <p>Upload an image to identify one of 50+ Philippine herbal plants</p>
+        </div>
+
+        <div class="upload-area" id="uploadArea">
+            <div class="upload-icon">📤</div>
+            <div class="upload-text">Drop your image here</div>
+            <div class="upload-subtext">or click to browse</div>
+            <input type="file" id="fileInput" accept="image/*">
+        </div>
+
+        <div class="error" id="error"></div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <div class="loading-text">Analyzing image...</div>
+        </div>
+
+        <div class="preview-container" id="previewContainer">
+            <img id="imagePreview" class="image-preview" alt="Preview">
+        </div>
+
+        <div class="results" id="results">
+            <div class="top-prediction" id="topPrediction"></div>
+            
+            <div class="results-header">
+                <span>📊</span>
+                <span>All Predictions</span>
+            </div>
+            <div id="predictions"></div>
+
+            <button class="btn-reset" onclick="reset()">
+                🔄 Classify Another Image
+            </button>
+        </div>
+
+        <div class="footer">
+            Powered by <a href="https://huggingface.co/openai/clip-vit-base-patch32" target="_blank">CLIP (zero-shot)</a>
+            <div style="margin-top:10px">
+                <button id="showLabelsBtn" class="btn-reset" style="padding:10px;font-size:14px">View Label List</button>
+            </div>
+            <div id="labelsContainer" style="display:none; text-align:left; margin-top:10px; max-height:160px; overflow:auto; border:1px solid #eee; border-radius:8px; padding:10px;"></div>
+        </div>
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const previewContainer = document.getElementById('previewContainer');
+        const imagePreview = document.getElementById('imagePreview');
+        const loading = document.getElementById('loading');
+        const results = document.getElementById('results');
+        const predictions = document.getElementById('predictions');
+        const topPrediction = document.getElementById('topPrediction');
+        const errorDiv = document.getElementById('error');
+        const showLabelsBtn = document.getElementById('showLabelsBtn');
+        const labelsContainer = document.getElementById('labelsContainer');
+
+        // Click to upload
+        uploadArea.addEventListener('click', () => fileInput.click());
+
+        // File input change
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        // Drag and drop
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
+            if (e.dataTransfer.files.length > 0) {
+                handleFile(e.dataTransfer.files[0]);
+            }
+        });
+
+        function handleFile(file) {
+            // Validate file type
+            if (!file.type.startsWith('image/')) {
+                showError('Please upload an image file (JPG, PNG, etc.)');
+                return;
+            }
+
+            // Show preview
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                imagePreview.src = e.target.result;
+                previewContainer.classList.add('active');
+            };
+            reader.readAsDataURL(file);
+
+            // Upload and classify
+            classifyImage(file);
+        }
+
+        async function classifyImage(file) {
+            // Hide previous results and errors
+            results.classList.remove('active');
+            errorDiv.classList.remove('active');
+            uploadArea.style.display = 'none';
+            
+            // Show loading
+            loading.classList.add('active');
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const response = await fetch('/classify', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+
+                const data = await response.json();
+                displayResults(data);
+            } catch (error) {
+                console.error('Error:', error);
+                showError('Failed to classify image. Please try again.');
+            } finally {
+                loading.classList.remove('active');
+            }
+        }
+
+        function displayResults(data) {
+            // Display top prediction
+            const top = data.top_prediction;
+            topPrediction.innerHTML = `
+                <div class="medal">🏆</div>
+                <div class="label">${top.label}</div>
+                <div class="confidence">${top.confidence}% confident</div>
+            `;
+
+            // Display all predictions
+            predictions.innerHTML = '';
+            data.predictions.forEach((pred, index) => {
+                const item = document.createElement('div');
+                item.className = 'prediction-item';
+                item.style.transform = 'translateX(-20px)';
+                
+                const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '•';
+                
+                item.innerHTML = `
+                    <div class="prediction-label">
+                        <span class="label-text">${medal} ${pred.label}</span>
+                        <span class="label-confidence">${pred.confidence}%</span>
+                    </div>
+                    <div class="confidence-bar">
+                        <div class="confidence-fill" style="width: 0%"></div>
+                    </div>
+                `;
+                predictions.appendChild(item);
+
+                // Animate confidence bar
+                setTimeout(() => {
+                    const fill = item.querySelector('.confidence-fill');
+                    fill.style.width = pred.confidence + '%';
+                }, 100 * index);
+            });
+
+            results.classList.add('active');
+        }
+
+        function showError(message) {
+            errorDiv.textContent = '⚠️ ' + message;
+            errorDiv.classList.add('active');
+            uploadArea.style.display = 'block';
+        }
+
+        function reset() {
+            fileInput.value = '';
+            previewContainer.classList.remove('active');
+            results.classList.remove('active');
+            errorDiv.classList.remove('active');
+            uploadArea.style.display = 'block';
+        }
+
+        showLabelsBtn.addEventListener('click', async () => {
+            try {
+                if (labelsContainer.style.display === 'none') {
+                    const res = await fetch('/labels');
+                    if (!res.ok) throw new Error('Failed to load labels');
+                    const data = await res.json();
+                    labelsContainer.innerHTML = `<div style="margin-bottom:8px; font-weight:600">Labels (${data.count})</div>` +
+                        '<ol style="margin-left:18px">' + data.labels.map(l => `<li>${l}</li>`).join('') + '</ol>';
+                    labelsContainer.style.display = 'block';
+                    showLabelsBtn.textContent = 'Hide Label List';
+                } else {
+                    labelsContainer.style.display = 'none';
+                    showLabelsBtn.textContent = 'View Label List';
+                }
+            } catch (e) {
+                showError('Unable to load label list.');
+            }
+        });
+    </script>
+</body>
+</html>
